@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tea for Men</title>
+<style>
+  body { margin:0; font-family:Arial; background:#0a0a0a; color:#fff; }
+  header { position:fixed; top:0; width:100%; background:#111; padding:15px; text-align:center; font-size:1.5em; color:#00ffcc; z-index:100; }
+  main { margin-top:70px; max-width:600px; margin-left:auto; margin-right:auto; padding-bottom:100px; }
+  .post-box { background:#1a1a1a; padding:15px; margin:10px 0; border-radius:15px; }
+  textarea, input, select { width:100%; padding:10px; margin:5px 0; border-radius:10px; border:none; background:#222; color:#fff; }
+  .btn { display:inline-block; margin:5px; padding:8px 12px; border-radius:50px; border:none; font-weight:bold; cursor:pointer; }
+  .btn:hover { transform:scale(1.1); }
+  .like-btn { background:#ff3e3e; color:#fff; }
+  .comment-btn { background:#3e7eff; color:#fff; }
+  .flag-green { background:#00ff66; color:#111; }
+  .flag-red { background:#ff0000; color:#fff; }
+  .feed { margin-top:20px; }
+  .post { background:#111; border-radius:20px; margin:20px 0; padding:20px; position:relative; }
+  .post-author { font-weight:bold; font-size:1.1em; margin-bottom:10px; color:#00ffcc; }
+  .post-text { font-size:1.2em; line-height:1.4em; margin-bottom:15px; }
+  .post-actions { position:absolute; right:15px; top:50px; display:flex; flex-direction:column; align-items:center; }
+  .post-actions button { margin:8px 0; width:50px; height:50px; border-radius:50%; }
+  .comments { margin-top:15px; background:#222; padding:10px; border-radius:15px; }
+  .comment { margin:5px 0; padding:5px 10px; border-radius:10px; background:#333; }
+  input.comment-input { width:calc(100% - 90px); display:inline-block; margin-right:5px; }
+  button.comment-submit { display:inline-block; padding:8px 12px; border-radius:50px; border:none; background:#3e7eff; color:#fff; font-weight:bold; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>☕ Tea for Men</header>
+<main>
+  <div class="post-box">
+    <textarea id="postInput" placeholder="Drop some tea..."></textarea>
+    <select id="mode">
+      <option value="anonymous">Anonymous</option>
+      <option value="username">Username</option>
+      <option value="pseudonym">Pseudonym</option>
+    </select>
+    <input id="usernameInput" type="text" placeholder="Enter username" style="display:none;">
+    <button onclick="addPost()" class="btn like-btn">Post</button>
+  </div>
+  <div class="feed" id="feed"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://dhspvazdyiaymxbhblvm.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoc3B2YXpkeWlheW14YmhibHZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwMzEwNzMsImV4cCI6MjA3MzYwNzA3M30.KcZbirUdDqxQ1vCC6BxD3Ff5AVVMiTnmzJoK2I1uNzI';
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const modeSelect = document.getElementById('mode');
+const usernameInput = document.getElementById('usernameInput');
+modeSelect.addEventListener("change", ()=>{ usernameInput.style.display = (modeSelect.value==='username')?'block':'none'; });
+
+function generatePseudonym(){ 
+  const animals=["Tiger","Wolf","Falcon","Shark","Panther","Bear","Hawk"];
+  const colors=["Red","Blue","Green","Black","Silver","Gold","White"];
+  return `${colors[Math.floor(Math.random()*colors.length)]}${animals[Math.floor(Math.random()*animals.length)]}${Math.floor(Math.random()*100)}`;
+}
+
+async function addPost(){
+  const text=document.getElementById('postInput').value.trim();
+  if(!text)return;
+  let author="Anonymous";
+  if(modeSelect.value==="username")author=usernameInput.value.trim()||"Anonymous";
+  else if(modeSelect.value==="pseudonym")author=generatePseudonym();
+
+  await supabase.from('posts').insert([{text,author,likes:0,green_flags:0,red_flags:0}]);
+  document.getElementById('postInput').value='';
+}
+
+async function likePost(id,current){ await supabase.from('posts').update({likes:current+1}).eq('id',id); }
+async function flagPost(id,type,current){ const col=type==='green'?'green_flags':'red_flags'; await supabase.from('posts').update({[col]:current+1}).eq('id',id); }
+async function addComment(postId){ 
+  const input=document.getElementById(`commentInput-${postId}`);
+  const text=input.value.trim();
+  if(!text)return;
+  await supabase.from('comments').insert([{post_id:postId,text}]);
+  input.value='';
+}
+
+async function loadPosts(){
+  const {data}=await supabase.from('posts').select('*').order('created_at',{ascending:false});
+  renderPosts(data);
+  supabase.from('posts').on('INSERT',payload=>{renderPosts([payload.new,...data]);}).subscribe();
+}
+
+function renderPosts(posts){
+  const feed=document.getElementById('feed');
+  feed.innerHTML="";
+  posts.forEach(post=>{
+    const div=document.createElement('div'); div.classList.add('post');
+    div.innerHTML=`
+      <div class="post-author">${post.author}</div>
+      <div class="post-text">${post.text}</div>
+      <div class="post-actions">
+        <button class="like-btn" onclick="likePost('${post.id}',${post.likes})">❤️ ${post.likes}</button>
+        <button class="flag-green" onclick="flagPost('${post.id}','green',${post.green_flags})">✅ ${post.green_flags}</button>
+        <button class="flag-red" onclick="flagPost('${post.id}','red',${post.red_flags})">🚩 ${post.red_flags}</button>
+      </div>
+      <div class="comments">
+        <input id="commentInput-${post.id}" class="comment-input" placeholder="Comment...">
+        <button class="comment-submit" onclick="addComment('${post.id}')">Post</button>
+        <div id="commentList-${post.id}"></div>
+      </div>
+    `;
+    feed.appendChild(div);
+
+    supabase.from('comments').select('*').eq('post_id',post.id).order('created_at',{ascending:true}).then(cdata=>{
+      const list=document.getElementById(`commentList-${post.id}`);
+      if(list){ list.innerHTML=""; cdata.data.forEach(c=>{
+        const cm=document.createElement('div'); cm.classList.add('comment'); cm.textContent=c.text; list.appendChild(cm);
+      });}
+    });
+  });
+}
+
+loadPosts();
+</script>
+</body>
+</html>
